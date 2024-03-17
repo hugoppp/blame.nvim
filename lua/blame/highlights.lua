@@ -56,7 +56,7 @@ local function get_color_str(recency)
 	return string.format("#%02X%02X%02X", unpack(c))
 end
 
-local function find_max_min_commit_times(parsed_lines)
+local function find_min_max_commit_times(parsed_lines)
 	local min_time = nil
 	local max_time = nil
 
@@ -68,7 +68,7 @@ local function find_max_min_commit_times(parsed_lines)
 		end
 	end
 
-	return max_time, min_time
+	return min_time, max_time
 end
 
 ---Creates the highlights for Hash, NotCommited and random color per one hash
@@ -79,7 +79,7 @@ M.map_highlights_per_hash = function(parsed_lines)
     highlight NotCommitedBlame guifg=bg guibg=bg
   ]])
 
-	local min_time, max_time = find_max_min_commit_times(parsed_lines)
+	local min_time, max_time = find_min_max_commit_times(parsed_lines)
 	for _, value in ipairs(parsed_lines) do
 		local full_hash = value["hash"]
 		local hash = string.sub(full_hash, 0, 8)
