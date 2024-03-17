@@ -1,12 +1,74 @@
 local M = {}
 M.nsId = nil
 
+---@param color integer
+---@return number[]
+local function color_to_rgb(color)
+	local r = bit.band(bit.rshift(color, 16), 0xff)
+	local g = bit.band(bit.rshift(color, 8), 0xff)
+	local b = bit.band(color, 0xff)
+	return { r, g, b }
+end
+
+---@param group string
+---@return nil|integer
+local function get_hl_foreground(group)
+	if vim.fn.has("nvim-0.9") == 1 then
+		return vim.api.nvim_get_hl(0, { name = group }).fg
+	else
+		---@diagnostic disable-next-line: undefined-field
+		return vim.api.nvim_get_hl_by_name(group, true).foreground
+	end
+end
+
+local function get_random_rgb()
+	return { math.random(100, 255), math.random(100, 255), math.random(100, 255) }
+end
+
+---@param recency float
+---@return nil|number[]
+local function get_scheme_color(recency)
+	local hl_color = get_hl_foreground("Function")
+	if hl_color == nil then
+		return nil
+	end
+	local color = color_to_rgb(hl_color)
+	--- NOTE: ^ taken from https://github.com/stevearc/overseer.nvim/blob/d8c5be15ff0f7ccecbaa8f3612a6764b22fc07ff/lua/overseer/util.lua#L493-L546
+
+	local max_rgb_value = nil
+	for _, value in ipairs(color) do
+		max_rgb_value = max_rgb_value and math.max(max_rgb_value, value) or value
+	end
+
+	local scale_max = math.min(255 / max_rgb_value, 255)
+	local scale_min = 0.5
+	for i, value in ipairs(color) do
+		color[i] = value * ((scale_max - scale_min) * recency + scale_min)
+	end
+
+	return color
+end
+
+---@param recency float
 ---@return string
-local function random_rgb()
-	local r = math.random(100, 255)
-	local g = math.random(100, 255)
-	local b = math.random(100, 255)
-	return string.format("#%02X%02X%02X", r, g, b)
+local function get_color_str(recency)
+	local c = get_scheme_color(recency) or get_random_rgb()
+	return string.format("#%02X%02X%02X", unpack(c))
+end
+
+local function find_max_min_commit_times(parsed_lines)
+	local min_time = nil
+	local max_time = nil
+
+	for _, value in ipairs(parsed_lines) do
+		local time = tonumber(value["committer-time"])
+		if time then
+			min_time = min_time and math.min(min_time, time) or time
+			max_time = max_time and math.max(max_time, time) or time
+		end
+	end
+
+	return max_time, min_time
 end
 
 ---Creates the highlights for Hash, NotCommited and random color per one hash
@@ -17,11 +79,13 @@ M.map_highlights_per_hash = function(parsed_lines)
     highlight NotCommitedBlame guifg=bg guibg=bg
   ]])
 
+	local min_time, max_time = find_max_min_commit_times(parsed_lines)
 	for _, value in ipairs(parsed_lines) do
 		local full_hash = value["hash"]
 		local hash = string.sub(full_hash, 0, 8)
 		if vim.fn.hlID(hash) == 0 then
-			vim.cmd("highlight " .. hash .. " guifg=" .. random_rgb())
+			local recency = (tonumber(value["committer-time"]) - min_time) / (max_time - min_time)
+			vim.cmd("highlight " .. hash .. " guifg=" .. get_color_str(recency))
 		end
 	end
 end
